@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文書處理課堂抽考</title>
+    <!-- 引入 React 和 ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- 引入 Babel 用於在瀏覽器中編譯 JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 html2canvas 用於匯出圖片 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+
+        // 學生座位資料 (10列 x 3欄)
+        const seatData = [
+          [{ id: 10, name: '劉昊勳' }, { id: 20, name: '林曉彤' }, { id: 30, name: '盧姿雯' }],
+          [{ id: 9, name: '黃士誠' }, { id: 19, name: '林軒儀' }, { id: 29, name: '黃梓淩' }],
+          [{ id: 8, name: '溫星民' }, { id: 18, name: '林軒如' }, { id: 28, name: '許嘉穎' }],
+          [{ id: 7, name: '傅柏翔' }, { id: 17, name: '林思綺' }, { id: 27, name: '許予緁' }],
+          [{ id: 6, name: '陳冠甫' }, { id: 16, name: '林芫希' }, { id: 26, name: '張語恩' }],
+          [{ id: 5, name: '張  力' }, { id: 15, name: '李婧宇' }, { id: 25, name: '張瑜讌' }],
+          [{ id: 4, name: '范睿洋' }, { id: 14, name: '巫姿儀' }, { id: 24, name: '張凱茵' }],
+          [{ id: 3, name: '洪浩翔' }, { id: 13, name: '余佳欣' }, { id: 23, name: '張婕渝' }],
+          [{ id: 2, name: '姜柏瑋' }, { id: 12, name: '古雨薰' }, { id: 22, name: '崔寶勻' }],
+          [{ id: 1, name: '余鴻詮' }, { id: 11, name: '謝鈞澄' }, { id: 21, name: '邱苡涵' }]
+        ];
+
+        function App() {
+          const [selectedQuestions, setSelectedQuestions] = useState(new Set([1, 2, 3, 4, 5]));
+          const [randomCount, setRandomCount] = useState(5);
+          const [assignments, setAssignments] = useState(Array(10).fill(null).map(() => Array(3).fill('')));
+          const [errorMsg, setErrorMsg] = useState('');
+          const [isExporting, setIsExporting] = useState(false);
+          const [isSpinning, setIsSpinning] = useState(false);
+          const seatingChartRef = useRef(null);
+
+          const handleCheckboxChange = (q) => {
+            const newSet = new Set(selectedQuestions);
+            if (newSet.has(q)) {
+              newSet.delete(q);
+            } else {
+              newSet.add(q);
+            }
+            setSelectedQuestions(newSet);
+          };
+
+          const handleRandomSelect = () => {
+            let count = parseInt(randomCount, 10);
+            if (isNaN(count) || count < 2 || count > 15) {
+              alert("請輸入 2 到 15 之間的數字");
+              return;
+            }
+            const allQ = Array.from({ length: 15 }, (_, i) => i + 1);
+            const shuffled = allQ.sort(() => 0.5 - Math.random());
+            const selected = new Set(shuffled.slice(0, count));
+            setSelectedQuestions(selected);
+          };
+
+          const isValid = (grid, r, c, q) => {
+            if (r > 0 && grid[r - 1][c] === q) return false;
+            if (c > 0 && grid[r][c - 1] === q) return false;
+            return true;
+          };
+
+          const calculateFinalAssignments = () => {
+            const grid = Array(10).fill(null).map(() => Array(3).fill(null));
+            const questionsArray = Array.from(selectedQuestions);
+            const usageCounts = {};
+            questionsArray.forEach(q => usageCounts[q] = 0);
+
+            const backtrack = (r, c) => {
+              if (r === 10) return true;
+              const nextR = c === 2 ? r + 1 : r;
+              const nextC = c === 2 ? 0 : c + 1;
+
+              const sortedQuestions = [...questionsArray].sort((a, b) => {
+                if (usageCounts[a] !== usageCounts[b]) return usageCounts[a] - usageCounts[b];
+                return Math.random() - 0.5;
+              });
+
+              for (let q of sortedQuestions) {
+                if (isValid(grid, r, c, q)) {
+                  grid[r][c] = q;
+                  usageCounts[q]++;
+                  if (backtrack(nextR, nextC)) return true;
+                  grid[r][c] = null;
+                  usageCounts[q]--;
+                }
+              }
+              return false;
+            };
+
+            if (backtrack(0, 0)) return grid;
+            return null;
+          };
+
+          const startSpinning = () => {
+            if (selectedQuestions.size < 2) {
+              setErrorMsg('請至少選擇 2 個題組！');
+              return;
+            }
+            setErrorMsg('');
+            setIsSpinning(true);
+
+            const finalGrid = calculateFinalAssignments();
+            if (!finalGrid) {
+              setErrorMsg('無法找到符合條件的排列方式。');
+              setIsSpinning(false);
+              return;
+            }
+
+            const questionsArray = Array.from(selectedQuestions);
+            let delay = 50; 
+            const maxDelay = 400; 
+            const multiplier = 1.15; 
+
+            const runFrame = (currentDelay) => {
+              const tempGrid = Array(10).fill(null).map(() => 
+                Array(3).fill(null).map(() => questionsArray[Math.floor(Math.random() * questionsArray.length)])
+              );
+              setAssignments(tempGrid);
+
+              if (currentDelay < maxDelay) {
+                setTimeout(() => runFrame(currentDelay * multiplier), currentDelay);
+              } else {
+                setAssignments(finalGrid);
+                setIsSpinning(false);
+              }
+            };
+
+            runFrame(delay);
+          };
+
+          const exportToImage = async () => {
+            if (!seatingChartRef.current || isSpinning) return;
+            if (!window.html2canvas) {
+              alert("無法載入截圖套件，請檢查網路連線。");
+              return;
+            }
+            
+            setIsExporting(true);
+            try {
+              // 延遲以確保畫面穩定
+              await new Promise(r => setTimeout(r, 100));
+              const canvas = await window.html2canvas(seatingChartRef.current, {
+                scale: 2,
+                backgroundColor: '#ffffff',
+                logging: false,
+                useCORS: true
+              });
+              
+              const image = canvas.toDataURL("image/jpeg", 1.0);
+              const link = document.createElement('a');
+              link.download = '文書處理課堂抽考_座位分配表.jpg';
+              link.href = image;
+              link.click();
+            } catch (err) {
+              console.error("匯出圖片失敗", err);
+              alert("匯出圖片失敗，請稍後再試。");
+            } finally {
+              setIsExporting(false);
+            }
+          };
+
+          return (
+            <div className="min-h-screen bg-gray-100 p-4 font-sans">
+              <div className="max-w-[1600px] mx-auto">
+                <h1 className="text-3xl font-bold text-center text-blue-800 mb-6 tracking-wide">文書處理課堂抽考</h1>
+                
+                {/* 主要並排容器 */}
+                <div className="flex flex-col lg:flex-row gap-6 items-start">
+                  
+                  {/* 左側控制面板 (固定在左方) */}
+                  <div className="w-full lg:w-[400px] bg-white p-5 rounded-xl shadow-md border border-gray-200 lg:sticky lg:top-4">
+                    <h2 className="text-xl font-bold mb-4 text-gray-800 flex items-center gap-2">
+                      <span className="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">S</span>
+                      抽籤設定
+                    </h2>
+                    
+                    <div className="mb-6">
+                      <h3 className="text-sm font-semibold mb-3 text-gray-600">手動挑選題組：</h3>
+                      <div className="grid grid-cols-3 gap-2">
+                        {Array.from({ length: 15 }, (_, i) => i + 1).map(q => (
+                          <label key={q} className={`flex items-center justify-center space-x-1 cursor-pointer border py-2 rounded-lg transition text-sm ${selectedQuestions.has(q) ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'bg-white border-gray-200'}`}>
+                            <input
+                              type="checkbox"
+                              checked={selectedQuestions.has(q)}
+                              onChange={() => handleCheckboxChange(q)}
+                              disabled={isSpinning}
+                              className="hidden"
+                            />
+                            <span>題組 {q}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4 pt-4 border-t">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-gray-600">隨機選題：</span>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min="2"
+                            max="15"
+                            value={randomCount}
+                            onChange={(e) => setRandomCount(e.target.value)}
+                            disabled={isSpinning}
+                            className="w-12 border border-gray-300 rounded p-1 text-center text-sm"
+                          />
+                          <button 
+                            onClick={handleRandomSelect}
+                            disabled={isSpinning}
+                            className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded text-xs font-bold transition"
+                          >
+                            🎲 執行
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3">
+                        <button
+                          onClick={startSpinning}
+                          disabled={isSpinning}
+                          className={`w-full ${isSpinning ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold py-3 rounded-xl shadow-md transition flex items-center justify-center gap-2 text-lg`}
+                        >
+                          {isSpinning ? '🎲 抽籤中...' : '🎯 開始抽籤'}
+                        </button>
+                        <button
+                          onClick={exportToImage}
+                          disabled={isExporting || isSpinning}
+                          className={`w-full ${(isExporting || isSpinning) ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'} text-white font-bold py-2 rounded-xl shadow transition flex items-center justify-center gap-2`}
+                        >
+                          {isExporting ? '處理中...' : '📸 匯出分配表圖片'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {errorMsg && (
+                      <div className="mt-4 p-3 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm font-medium">
+                        ⚠️ {errorMsg}
+                      </div>
+                    )}
+
+                    <div className="mt-6 text-xs text-gray-400 bg-gray-50 p-3 rounded-lg leading-relaxed">
+                      💡 提示：點擊「開始抽籤」後，右側座位表會立即同步跳動。抽籤結束後，您可以點擊匯出圖片按鈕存檔。
+                    </div>
+                  </div>
+
+                  {/* 右側座位分配表區塊 (佔據剩餘空間) */}
+                  <div className="flex-1 w-full bg-white p-4 lg:p-6 rounded-xl shadow-md border border-gray-200 overflow-x-auto relative min-h-[700px]">
+                    <div ref={seatingChartRef} className="bg-white p-2">
+                      <h2 className="text-xl font-bold text-center mb-6 text-gray-800">文書處理課堂抽考 - 座位分配表</h2>
+                      
+                      <div className="flex justify-center gap-2 md:gap-4 lg:gap-6 min-w-max">
+                        {[0, 1, 2].map(colIndex => (
+                          <table key={`col-${colIndex}`} className="border-collapse border-2 border-black text-center w-[220px] md:w-[260px] bg-white">
+                            <thead>
+                              <tr className="bg-red-600 text-white text-base">
+                                <th className="border border-black py-2 px-1 w-1/4">座號</th>
+                                <th className="border border-black py-2 px-1 w-1/2">姓名</th>
+                                <th className="border border-black py-2 px-1 w-1/4">題號</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {seatData.map((row, rowIndex) => {
+                                const student = row[colIndex];
+                                const bgClass = rowIndex < 5 ? 'bg-[#fcf2cd]' : 'bg-[#f9d857]';
+                                const assignedQ = assignments[rowIndex][colIndex];
+                                
+                                return (
+                                  <tr key={student.id} className={`${bgClass} font-bold`}>
+                                    <td className="border border-black py-3 px-1 text-lg">{student.id}</td>
+                                    <td className="border border-black py-3 px-1 text-lg tracking-tighter sm:tracking-widest whitespace-nowrap">{student.name}</td>
+                                    <td className="border border-black py-1 px-1">
+                                      <span className={`
+                                        block transition-all duration-150
+                                        ${isSpinning ? 'text-gray-400 scale-110 animate-pulse text-2xl' : 'text-blue-900 font-black text-3xl'}
+                                      `}>
+                                        {assignedQ || ''}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        ))}
+                      </div>
+
+                      {/* 教師機 */}
+                      <div className="mt-8 flex justify-center">
+                        <div className="bg-[#0070c0] text-white text-lg font-bold py-3 px-16 border-2 border-black tracking-widest shadow-sm">
+                          教 師 機
+                        </div>
+                      </div>
+                    </div>
+
+                    {isSpinning && (
+                      <div className="absolute top-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-full animate-bounce shadow-lg font-bold text-sm">
+                        🎲 抽籤中...
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
