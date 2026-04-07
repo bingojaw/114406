@@ -13,6 +13,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 引入 html2canvas 用於匯出圖片 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        /* 針對 html2canvas 的相容性微調 */
+        .seat-table td {
+            vertical-align: middle;
+        }
+    </style>
 </head>
 <body>
     <div id="root"></div>
@@ -20,7 +26,6 @@
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
-        // 學生座位資料 (10列 x 3欄)
         const seatData = [
           [{ id: 10, name: '劉昊勳' }, { id: 20, name: '林曉彤' }, { id: 30, name: '盧姿雯' }],
           [{ id: 9, name: '黃士誠' }, { id: 19, name: '林軒儀' }, { id: 29, name: '黃梓淩' }],
@@ -81,12 +86,10 @@
               if (r === 10) return true;
               const nextR = c === 2 ? r + 1 : r;
               const nextC = c === 2 ? 0 : c + 1;
-
               const sortedQuestions = [...questionsArray].sort((a, b) => {
                 if (usageCounts[a] !== usageCounts[b]) return usageCounts[a] - usageCounts[b];
                 return Math.random() - 0.5;
               });
-
               for (let q of sortedQuestions) {
                 if (isValid(grid, r, c, q)) {
                   grid[r][c] = q;
@@ -98,7 +101,6 @@
               }
               return false;
             };
-
             if (backtrack(0, 0)) return grid;
             return null;
           };
@@ -128,7 +130,6 @@
                 Array(3).fill(null).map(() => questionsArray[Math.floor(Math.random() * questionsArray.length)])
               );
               setAssignments(tempGrid);
-
               if (currentDelay < maxDelay) {
                 setTimeout(() => runFrame(currentDelay * multiplier), currentDelay);
               } else {
@@ -136,36 +137,32 @@
                 setIsSpinning(false);
               }
             };
-
             runFrame(delay);
           };
 
           const exportToImage = async () => {
             if (!seatingChartRef.current || isSpinning) return;
-            if (!window.html2canvas) {
-              alert("無法載入截圖套件，請檢查網路連線。");
-              return;
-            }
-            
             setIsExporting(true);
             try {
-              // 延遲以確保畫面穩定
-              await new Promise(r => setTimeout(r, 100));
+              // 確保渲染穩定
+              await new Promise(r => setTimeout(r, 200));
               const canvas = await window.html2canvas(seatingChartRef.current, {
                 scale: 2,
                 backgroundColor: '#ffffff',
                 logging: false,
-                useCORS: true
+                useCORS: true,
+                y: 0,
+                scrollX: 0,
+                scrollY: 0
               });
-              
-              const image = canvas.toDataURL("image/jpeg", 1.0);
+              const image = canvas.toDataURL("image/jpeg", 0.95);
               const link = document.createElement('a');
               link.download = '文書處理課堂抽考_座位分配表.jpg';
               link.href = image;
               link.click();
             } catch (err) {
               console.error("匯出圖片失敗", err);
-              alert("匯出圖片失敗，請稍後再試。");
+              alert("匯出圖片失敗，請嘗試使用電腦版瀏覽器。");
             } finally {
               setIsExporting(false);
             }
@@ -176,11 +173,10 @@
               <div className="max-w-[1600px] mx-auto">
                 <h1 className="text-3xl font-bold text-center text-blue-800 mb-6 tracking-wide">文書處理課堂抽考</h1>
                 
-                {/* 主要並排容器 */}
                 <div className="flex flex-col lg:flex-row gap-6 items-start">
                   
-                  {/* 左側控制面板 (固定在左方) */}
-                  <div className="w-full lg:w-[400px] bg-white p-5 rounded-xl shadow-md border border-gray-200 lg:sticky lg:top-4">
+                  {/* 左側控制面板 */}
+                  <div className="w-full lg:w-[400px] bg-white p-5 rounded-xl shadow-md border border-gray-200 lg:sticky lg:top-4 no-export">
                     <h2 className="text-xl font-bold mb-4 text-gray-800 flex items-center gap-2">
                       <span className="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">S</span>
                       抽籤設定
@@ -250,25 +246,21 @@
                         ⚠️ {errorMsg}
                       </div>
                     )}
-
-                    <div className="mt-6 text-xs text-gray-400 bg-gray-50 p-3 rounded-lg leading-relaxed">
-                      💡 提示：點擊「開始抽籤」後，右側座位表會立即同步跳動。抽籤結束後，您可以點擊匯出圖片按鈕存檔。
-                    </div>
                   </div>
 
-                  {/* 右側座位分配表區塊 (佔據剩餘空間) */}
-                  <div className="flex-1 w-full bg-white p-4 lg:p-6 rounded-xl shadow-md border border-gray-200 overflow-x-auto relative min-h-[700px]">
-                    <div ref={seatingChartRef} className="bg-white p-2">
-                      <h2 className="text-xl font-bold text-center mb-6 text-gray-800">文書處理課堂抽考 - 座位分配表</h2>
+                  {/* 右側座位分配表 */}
+                  <div className="flex-1 w-full bg-white p-4 lg:p-6 rounded-xl shadow-md border border-gray-200 overflow-x-auto relative">
+                    <div ref={seatingChartRef} className="bg-white p-4 min-w-[800px]">
+                      <h2 className="text-2xl font-bold text-center mb-6 text-gray-800">文書處理課堂抽考 - 座位分配表</h2>
                       
-                      <div className="flex justify-center gap-2 md:gap-4 lg:gap-6 min-w-max">
+                      <div className="flex justify-center gap-4">
                         {[0, 1, 2].map(colIndex => (
-                          <table key={`col-${colIndex}`} className="border-collapse border-2 border-black text-center w-[220px] md:w-[260px] bg-white">
+                          <table key={`col-${colIndex}`} className="seat-table border-collapse border-2 border-black text-center w-[260px] bg-white">
                             <thead>
                               <tr className="bg-red-600 text-white text-base">
-                                <th className="border border-black py-2 px-1 w-1/4">座號</th>
-                                <th className="border border-black py-2 px-1 w-1/2">姓名</th>
-                                <th className="border border-black py-2 px-1 w-1/4">題號</th>
+                                <th className="border border-black py-2 px-1 w-[20%]">座號</th>
+                                <th className="border border-black py-2 px-1 w-[55%]">姓名</th>
+                                <th className="border border-black py-2 px-1 w-[25%]">題組</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -280,14 +272,17 @@
                                 return (
                                   <tr key={student.id} className={`${bgClass} font-bold`}>
                                     <td className="border border-black py-3 px-1 text-lg">{student.id}</td>
-                                    <td className="border border-black py-3 px-1 text-lg tracking-tighter sm:tracking-widest whitespace-nowrap">{student.name}</td>
-                                    <td className="border border-black py-1 px-1">
-                                      <span className={`
-                                        block transition-all duration-150
-                                        ${isSpinning ? 'text-gray-400 scale-110 animate-pulse text-2xl' : 'text-blue-900 font-black text-3xl'}
-                                      `}>
-                                        {assignedQ || ''}
-                                      </span>
+                                    <td className="border border-black py-3 px-1 text-lg whitespace-nowrap">{student.name}</td>
+                                    <td className="border border-black p-0 h-full">
+                                        {/* 使用 Flexbox 確保數字在任何狀況下都精確垂直居中 */}
+                                        <div className="flex items-center justify-center h-full w-full min-h-[48px]">
+                                            <span className={`
+                                                leading-none transition-all duration-150 inline-block
+                                                ${isSpinning ? 'text-gray-400 animate-pulse text-2xl' : 'text-blue-900 font-black text-3xl'}
+                                            `}>
+                                                {assignedQ || ''}
+                                            </span>
+                                        </div>
                                     </td>
                                   </tr>
                                 );
@@ -298,8 +293,8 @@
                       </div>
 
                       {/* 教師機 */}
-                      <div className="mt-8 flex justify-center">
-                        <div className="bg-[#0070c0] text-white text-lg font-bold py-3 px-16 border-2 border-black tracking-widest shadow-sm">
+                      <div className="mt-10 flex justify-center">
+                        <div className="bg-[#0070c0] text-white text-xl font-bold py-3 px-20 border-2 border-black tracking-widest shadow-sm">
                           教 師 機
                         </div>
                       </div>
@@ -311,7 +306,6 @@
                       </div>
                     )}
                   </div>
-
                 </div>
               </div>
             </div>
